@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Star, ShieldCheck, MapPin, Crown, CalendarDays } from 'lucide-react'
 import { isScheduledCategory } from '@/lib/constants'
+import { safeMediaUrl } from '@/lib/security'
 import { formatPrice, one, PricingType } from '@/lib/format'
 
 type Rel<T> = T | T[] | null
@@ -40,7 +41,11 @@ export function ProCard({ pro, highlight = false }: { pro: ProCardData; highligh
   const profile = one(pro.profiles)
   const mainService = pro.services?.[0]
   const zonesList = (pro.pro_zones || []).map((pz) => one(pz.zones)?.name).filter(Boolean) as string[]
-  const photos = pro.portfolio_items?.slice(0, 3) || []
+  const avatarSrc = safeMediaUrl(profile?.avatar_url)
+  const photos = (pro.portfolio_items || [])
+    .map((p) => safeMediaUrl(p.image_url))
+    .filter((u): u is string => !!u)
+    .slice(0, 3)
   const hasAgenda = (pro.services || []).some((s) => isScheduledCategory(s.category))
 
   return (
@@ -48,8 +53,8 @@ export function ProCard({ pro, highlight = false }: { pro: ProCardData; highligh
       <div>
         <div className="flex items-start gap-3">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-lg font-bold text-[#0F4C81]">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt={pro.business_name} className="h-full w-full object-cover" />
+            {avatarSrc ? (
+              <img src={avatarSrc} alt={pro.business_name} className="h-full w-full object-cover" />
             ) : (
               pro.business_name.slice(0, 2).toUpperCase()
             )}
@@ -97,8 +102,8 @@ export function ProCard({ pro, highlight = false }: { pro: ProCardData; highligh
 
         {photos.length > 0 && (
           <div className="mt-3 grid grid-cols-3 gap-1.5">
-            {photos.map((item, idx) => (
-              <img key={idx} src={item.image_url} alt="Trabalho realizado" className="h-16 w-full rounded-md object-cover" />
+            {photos.map((src, idx) => (
+              <img key={idx} src={src} alt="Trabalho realizado" className="h-16 w-full rounded-md object-cover" />
             ))}
           </div>
         )}

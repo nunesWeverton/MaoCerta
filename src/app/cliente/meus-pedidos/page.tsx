@@ -7,6 +7,7 @@ import { OPEN_STATUSES, SHIFT_LABELS, STATUS_LABELS, STATUS_STYLES, RequestStatu
 import { dateTimeLabel, timeLabel } from '@/lib/schedule'
 import { formatDate, one } from '@/lib/format'
 import { formatBrazilianPhone } from '@/lib/whatsapp'
+import { DeleteAccount } from '@/components/delete-account'
 import { ArrowLeft, CalendarClock, CheckCircle2, Loader2, MapPin, MessageCircle, Star, XCircle } from 'lucide-react'
 
 type Rel<T> = T | T[] | null
@@ -245,6 +246,12 @@ export default function MeusPedidosPage() {
           })
         )}
       </div>
+
+      {!loading && (
+        <div className="mt-10">
+          <DeleteAccount />
+        </div>
+      )}
     </main>
   )
 }

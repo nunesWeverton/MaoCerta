@@ -32,7 +32,7 @@ export default function RedefinirSenhaPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password.length < 6) return setError('A senha precisa ter pelo menos 6 caracteres.')
+    if (password.length < 8) return setError('A senha precisa ter pelo menos 8 caracteres.')
     if (password !== confirm) return setError('As senhas não conferem.')
     setLoading(true)
     const { error: updateError } = await supabase.auth.updateUser({ password })
@@ -65,7 +65,7 @@ export default function RedefinirSenhaPage() {
               type="password"
               placeholder="Nova senha"
               aria-label="Nova senha"
-              minLength={6}
+              minLength={8}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -75,7 +75,7 @@ export default function RedefinirSenhaPage() {
               type="password"
               placeholder="Repita a nova senha"
               aria-label="Repita a nova senha"
-              minLength={6}
+              minLength={8}
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}

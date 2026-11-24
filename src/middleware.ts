@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { safeRedirectPath } from '@/lib/security'
 
 const PROTECTED_PREFIXES = ['/painel', '/admin', '/cliente']
 
@@ -48,9 +49,7 @@ export async function middleware(request: NextRequest) {
     const target =
       params.get('role') === 'pro'
         ? '/painel'
-        : redirect && redirect.startsWith('/') && !redirect.startsWith('//')
-          ? redirect
-          : '/'
+        : safeRedirectPath(redirect)
     return NextResponse.redirect(new URL(target, request.url))
   }
 

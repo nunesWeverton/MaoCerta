@@ -9,6 +9,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { LOCATION_LABELS, LocationKey, isScheduledCategory } from '@/lib/constants'
 import { formatDuration, WEEKDAY_LABELS } from '@/lib/schedule'
 import { formatDate, formatPrice, one, PricingType } from '@/lib/format'
+import { safeMediaUrl } from '@/lib/security'
 import { ArrowLeft, ShieldCheck, Star, MapPin, Home, Clock, Store } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -97,6 +98,10 @@ export default async function ProProfilePage({ params }: ProProfilePageProps) {
   } = await supabase.auth.getUser()
 
   const profileData = one(pro.profiles)
+  const avatarSrc = safeMediaUrl(profileData?.avatar_url)
+  const portfolio = (pro.portfolio_items || [])
+    .map((item) => ({ ...item, image_url: safeMediaUrl(item.image_url) }))
+    .filter((item): item is typeof item & { image_url: string } => !!item.image_url)
   const zonesList = (pro.pro_zones || []).map((pz) => one(pz.zones)).filter(Boolean) as { id: number; name: string }[]
 
   // Se o profissional ainda não marcou bairros, o cliente escolhe entre todos
@@ -137,8 +142,8 @@ export default async function ProProfilePage({ params }: ProProfilePageProps) {
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-start gap-4">
           <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-xl font-bold text-[#0F4C81]">
-            {profileData?.avatar_url ? (
-              <img src={profileData.avatar_url} alt={pro.business_name} className="h-full w-full object-cover" />
+            {avatarSrc ? (
+              <img src={avatarSrc} alt={pro.business_name} className="h-full w-full object-cover" />
             ) : (
               pro.business_name.slice(0, 2).toUpperCase()
             )}
@@ -251,11 +256,11 @@ export default async function ProProfilePage({ params }: ProProfilePageProps) {
       </section>
 
       {/* Portfólio */}
-      {pro.portfolio_items && pro.portfolio_items.length > 0 && (
+      {portfolio.length > 0 && (
         <section className="mt-6">
           <h2 className="text-lg font-bold text-slate-900">Portfólio de Trabalhos</h2>
           <div className="mt-3 grid grid-cols-3 gap-2">
-            {pro.portfolio_items.map((item) => (
+            {portfolio.map((item) => (
               <a key={item.id} href={item.image_url} target="_blank" rel="noopener noreferrer">
                 <img
                   src={item.image_url}

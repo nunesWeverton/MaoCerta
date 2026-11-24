@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import type { EmailOtpType } from '@supabase/supabase-js'
 import { createServerSupabase } from '@/lib/supabase/server'
+import { safeRedirectPath } from '@/lib/security'
 
 /**
  * Destino dos links enviados por e-mail (confirmação de cadastro e recuperação de senha).
@@ -11,8 +12,7 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const tokenHash = searchParams.get('token_hash')
   const type = searchParams.get('type') as EmailOtpType | null
-  const rawNext = searchParams.get('next') || '/'
-  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/'
+  const next = safeRedirectPath(searchParams.get('next'))
 
   const supabase = await createServerSupabase()
   let ok = false

@@ -50,7 +50,9 @@ export default function PrivacidadePage() {
           <p>
             Você pode solicitar acesso, correção, portabilidade ou exclusão dos seus dados e revogar o consentimento a
             qualquer momento, pelos canais de contato informados no rodapé. Dados de perfil podem ser corrigidos
-            diretamente no painel.
+            diretamente no painel, e a conta pode ser excluída a qualquer momento pela opção &quot;Excluir minha
+            conta&quot; (em Meus Pedidos ou no painel do profissional), o que apaga perfil, vitrine, agenda, pedidos e
+            avaliações.
           </p>
         </section>
 

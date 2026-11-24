@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { buildWhatsAppQuoteUrl } from '@/lib/whatsapp'
 import { SHIFT_LABELS } from '@/lib/constants'
 import { ImageUploader } from '@/components/image-uploader'
+import { safeMediaUrl } from '@/lib/security'
 import { CheckCircle2, MessageCircle, Loader2 } from 'lucide-react'
 
 interface QuoteModalProps {
@@ -201,7 +202,7 @@ export function QuoteModal({ proId, proName, proPhone, services, zones, currentU
             folder="requests"
             userId={currentUserId}
             label={photoUrl ? 'Trocar foto anexada' : 'Anexar foto opcional do problema'}
-            onUploadSuccess={(url) => setPhotoUrl(url)}
+            onUploadSuccess={(url) => setPhotoUrl(safeMediaUrl(url))}
           />
         </div>
       )}

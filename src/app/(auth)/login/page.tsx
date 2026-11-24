@@ -4,6 +4,7 @@ import { useMemo, useState, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { safeRedirectPath } from '@/lib/security'
 import { Loader2 } from 'lucide-react'
 
 function LoginForm() {
@@ -13,7 +14,7 @@ function LoginForm() {
   const defaultRole = isProParam ? 'pro' : 'client'
   const rawRedirect = searchParams.get('redirect')
   // Só aceita caminhos internos (evita redirecionamento para sites externos)
-  const explicitRedirect = rawRedirect && rawRedirect.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null
+  const explicitRedirect = rawRedirect ? safeRedirectPath(rawRedirect, '') || null : null
   const redirectUrl = explicitRedirect || (defaultRole === 'pro' ? '/painel' : '/')
 
   // Abre direto no modo cadastro se vier pelo botão "Criar Minha Vitrine Grátis"
@@ -44,6 +45,11 @@ function LoginForm() {
         setLoading(false)
         return
       }
+      if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+        setError('A senha precisa ter pelo menos 8 caracteres, com letras e números.')
+        setLoading(false)
+        return
+      }
       if (whatsapp.replace(/\D/g, '').length < 10) {
         setError('Informe o WhatsApp com DDD (ex.: 31999999999).')
         setLoading(false)
@@ -69,7 +75,7 @@ function LoginForm() {
           /already registered|already exists/i.test(signUpError.message)
             ? 'Este e-mail já está cadastrado. Faça login ou recupere sua senha.'
             : /password/i.test(signUpError.message)
-              ? 'Senha muito fraca. Use pelo menos 6 caracteres.'
+              ? 'Senha muito fraca. Use pelo menos 8 caracteres, com letras e números.'
               : 'Não foi possível criar a conta. Verifique os dados e tente novamente.'
         )
         setLoading(false)
@@ -211,11 +217,11 @@ function LoginForm() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-slate-700">Senha (mín. 6 caracteres)</label>
+          <label className="mb-1 block text-sm font-medium text-slate-700">Senha (mín. 8 caracteres)</label>
           <input
             type="password"
             required
-            minLength={6}
+            minLength={8}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-lg border border-slate-300 p-2.5 text-base"

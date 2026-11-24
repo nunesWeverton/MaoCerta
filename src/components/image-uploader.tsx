@@ -38,7 +38,8 @@ export function ImageUploader({
       const compressedFile = await imageCompression(file, {
         maxSizeMB: 0.25,
         maxWidthOrHeight: 1280,
-        useWebWorker: true,
+        // false: com true a biblioteca baixa código de um CDN externo (jsdelivr)
+        useWebWorker: false,
         fileType: 'image/jpeg',
         initialQuality: 0.8,
       })

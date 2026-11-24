@@ -598,6 +598,160 @@ after insert or delete on public.reviews
 for each row execute procedure public.update_pro_rating();
 
 -- =====================================================================
+-- 4b. VALIDAÇÕES E LIMITES CONTRA ABUSO
+-- =====================================================================
+
+-- Fotos só podem apontar para o bucket do projeto, dentro da pasta do próprio usuário
+-- (impede links "javascript:", imagens de terceiros e uso de fotos de outra pessoa)
+create or replace function public.is_own_media_url(p_url text, p_uid uuid)
+returns boolean
+language sql immutable
+as $$
+  select p_url is null
+      or p_url ~ ('^https://[^/]+/storage/v1/object/public/maocerta-media/' || p_uid::text || '/[A-Za-z0-9_./-]+$');
+$$;
+
+create or replace function public.validate_media_urls()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_url text;
+  v_old text;
+  v_uid uuid;
+begin
+  if not public.is_app_user() then
+    return new;
+  end if;
+  if tg_table_name = 'profiles' then
+    v_url := new.avatar_url; v_uid := new.id;
+    if tg_op = 'UPDATE' then v_old := old.avatar_url; end if;
+  elsif tg_table_name = 'portfolio_items' then
+    v_url := new.image_url; v_uid := new.pro_id;
+    if tg_op = 'UPDATE' then v_old := old.image_url; end if;
+  elsif tg_table_name = 'service_requests' then
+    v_url := new.photo_url; v_uid := new.client_id;
+    if tg_op = 'UPDATE' then v_old := old.photo_url; end if;
+  end if;
+  if (tg_op = 'INSERT' or v_url is distinct from v_old) and not public.is_own_media_url(v_url, v_uid) then
+    raise exception 'Imagem inválida: envie a foto pelo próprio app.';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_media_urls on public.profiles;
+create trigger validate_media_urls before insert or update on public.profiles
+for each row execute procedure public.validate_media_urls();
+drop trigger if exists validate_media_urls on public.portfolio_items;
+create trigger validate_media_urls before insert or update on public.portfolio_items
+for each row execute procedure public.validate_media_urls();
+drop trigger if exists validate_media_urls on public.service_requests;
+create trigger validate_media_urls before insert or update on public.service_requests
+for each row execute procedure public.validate_media_urls();
+
+-- Limites de quantidade (evitam spam e estouro de armazenamento)
+create or replace function public.enforce_quotas()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if tg_table_name = 'service_requests' and auth.uid() is not null then
+    if (select count(*) from public.service_requests
+        where client_id = new.client_id and created_at > now() - interval '24 hours') >= 10 then
+      raise exception 'Limite de 10 pedidos por dia atingido. Tente novamente amanhã.';
+    end if;
+    if (select count(*) from public.service_requests
+        where client_id = new.client_id and pro_id = new.pro_id and status = 'pending') >= 3 then
+      raise exception 'Você já tem pedidos aguardando resposta deste profissional.';
+    end if;
+  elsif tg_table_name = 'services' and auth.uid() is not null then
+    if (select count(*) from public.services where pro_id = new.pro_id) >= 30 then
+      raise exception 'Limite de 30 serviços por vitrine.';
+    end if;
+  elsif tg_table_name = 'portfolio_items' and auth.uid() is not null then
+    if (select count(*) from public.portfolio_items where pro_id = new.pro_id) >= 60 then
+      raise exception 'Limite de 60 fotos no portfólio. Remova alguma para adicionar outra.';
+    end if;
+  elsif tg_table_name = 'demand_signals' then
+    if (select count(*) from public.demand_signals where created_at > now() - interval '10 minutes') >= 30 then
+      raise exception 'Muitos envios no momento. Tente novamente em alguns minutos.';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_quotas on public.service_requests;
+create trigger enforce_quotas before insert on public.service_requests
+for each row execute procedure public.enforce_quotas();
+drop trigger if exists enforce_quotas on public.services;
+create trigger enforce_quotas before insert on public.services
+for each row execute procedure public.enforce_quotas();
+drop trigger if exists enforce_quotas on public.portfolio_items;
+create trigger enforce_quotas before insert on public.portfolio_items
+for each row execute procedure public.enforce_quotas();
+drop trigger if exists enforce_quotas on public.demand_signals;
+create trigger enforce_quotas before insert on public.demand_signals
+for each row execute procedure public.enforce_quotas();
+
+-- Arquivos no storage por usuário
+create or replace function public.storage_file_count(p_uid uuid)
+returns integer
+language sql stable security definer set search_path = public, storage
+as $$
+  select count(*)::int from storage.objects
+  where bucket_id = 'maocerta-media' and (storage.foldername(name))[1] = p_uid::text;
+$$;
+
+-- Tamanho máximo dos textos (NOT VALID: não reprova dados antigos, vale para novos)
+do $$
+declare
+  c record;
+begin
+  for c in
+    select * from (values
+      ('profiles', 'profiles_full_name_len', 'char_length(full_name) <= 120'),
+      ('pro_details', 'pro_details_business_name_len', 'char_length(business_name) <= 120'),
+      ('pro_details', 'pro_details_bio_len', 'char_length(bio) <= 2000'),
+      ('pro_details', 'pro_details_address_len', 'char_length(business_address) <= 200'),
+      ('services', 'services_title_len', 'char_length(title) <= 120'),
+      ('services', 'services_description_len', 'char_length(description) <= 1000'),
+      ('services', 'services_price_range', 'price_value is null or (price_value > 0 and price_value <= 100000)'),
+      ('service_requests', 'requests_description_len', 'char_length(description) <= 2000'),
+      ('reviews', 'reviews_comment_len', 'char_length(comment) <= 1000'),
+      ('appointments', 'appointments_note_len', 'char_length(note) <= 500'),
+      ('portfolio_items', 'portfolio_caption_len', 'char_length(caption) <= 200')
+    ) as t(tbl, name, expr)
+  loop
+    if not exists (select 1 from pg_constraint where conname = c.name) then
+      execute format('alter table public.%I add constraint %I check (%s) not valid', c.tbl, c.name, c.expr);
+    end if;
+  end loop;
+end;
+$$;
+
+-- LGPD: o próprio usuário exclui a conta e todos os dados vinculados
+create or replace function public.delete_my_account()
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'Não autenticado';
+  end if;
+  if exists (select 1 from public.profiles where id = v_uid and role = 'admin') then
+    raise exception 'Contas de administrador não podem ser excluídas pelo app.';
+  end if;
+  -- Apaga em cascata: perfil, vitrine, serviços, portfólio, agenda, pedidos e avaliações
+  delete from auth.users where id = v_uid;
+end;
+$$;
+
+-- =====================================================================
 -- 5. PERMISSÕES (necessárias em projetos Supabase novos)
 -- =====================================================================
 grant usage on schema public to anon, authenticated;
@@ -608,6 +762,10 @@ grant insert on public.demand_signals to anon;
 revoke execute on function public.create_profile_for(uuid, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.create_pro_details(uuid, text) from public, anon, authenticated;
 grant execute on function public.become_pro() to authenticated;
+revoke execute on function public.delete_my_account() from public, anon;
+grant execute on function public.delete_my_account() to authenticated;
+revoke execute on function public.storage_file_count(uuid) from public, anon;
+grant execute on function public.storage_file_count(uuid) to authenticated;
 grant execute on function public.is_admin() to anon, authenticated;
 grant execute on function public.available_slots(uuid, integer, date, integer) to anon, authenticated;
 revoke execute on function public.book_appointment(uuid, timestamptz, text, text) from public, anon;
@@ -784,7 +942,11 @@ drop policy if exists "maocerta_delete_own_folder" on storage.objects;
 
 -- Cada usuário só envia/apaga arquivos dentro da pasta com o próprio id
 create policy "maocerta_upload_own_folder" on storage.objects for insert to authenticated
-  with check (bucket_id = 'maocerta-media' and (storage.foldername(name))[1] = auth.uid()::text);
+  with check (
+    bucket_id = 'maocerta-media'
+    and (storage.foldername(name))[1] = auth.uid()::text
+    and public.storage_file_count(auth.uid()) < 200
+  );
 create policy "maocerta_delete_own_folder" on storage.objects for delete to authenticated
   using (bucket_id = 'maocerta-media' and (storage.foldername(name))[1] = auth.uid()::text);
 

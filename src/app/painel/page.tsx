@@ -19,10 +19,12 @@ import {
 } from '@/lib/constants'
 import { formatDate, formatPrice, one, PricingType } from '@/lib/format'
 import { formatBrazilianPhone } from '@/lib/whatsapp'
+import { safeMediaUrl } from '@/lib/security'
 import { ImageUploader } from '@/components/image-uploader'
 import { ProAgenda } from '@/components/pro-agenda'
 import { dateTimeLabel, DURATION_OPTIONS, formatDuration } from '@/lib/schedule'
 import { LogoutButton } from '@/components/logout-button'
+import { DeleteAccount } from '@/components/delete-account'
 import {
   CheckCircle2,
   Loader2,
@@ -135,7 +137,7 @@ export default function PainelProfissionalPage() {
       return
     }
     setPhone(profile.phone_whatsapp || '')
-    setAvatarUrl(profile.avatar_url)
+    setAvatarUrl(safeMediaUrl(profile.avatar_url))
 
     const { data: details } = await supabase.from('pro_details').select('*').eq('user_id', user.id).maybeSingle()
     if (!details) {
@@ -160,7 +162,11 @@ export default function PainelProfissionalPage() {
 
     setProDetails(details as ProDetails)
     setServices((srvs as Service[]) || [])
-    setPortfolio(port || [])
+    setPortfolio(
+      (port || [])
+        .map((p) => ({ ...p, image_url: safeMediaUrl(p.image_url) || '' }))
+        .filter((p) => p.image_url)
+    )
     setZones((allZones as Zone[]) || [])
     setSelectedZones((myZones || []).map((z) => z.zone_id))
     setRequests((reqs as unknown as RequestRow[]) || [])
@@ -226,7 +232,7 @@ export default function PainelProfissionalPage() {
     if (!userId) return
     const { error } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', userId)
     if (error) return notify('error', 'Não foi possível salvar a foto.')
-    setAvatarUrl(url)
+    setAvatarUrl(safeMediaUrl(url))
     notify('ok', 'Foto de perfil atualizada!')
   }
 
@@ -553,6 +559,7 @@ export default function PainelProfissionalPage() {
               const service = one(r.services)
               const zone = one(r.zones)
               const appt = one(r.appointments)
+              const photo = safeMediaUrl(r.photo_url)
               const clientPhone = client?.phone_whatsapp ? formatBrazilianPhone(client.phone_whatsapp) : ''
               const open = OPEN_STATUSES.includes(r.status)
               return (
@@ -574,9 +581,9 @@ export default function PainelProfissionalPage() {
                     </p>
                   )}
                   <p className="mt-1.5 text-sm text-slate-700">{r.description}</p>
-                  {r.photo_url && (
-                    <a href={r.photo_url} target="_blank" rel="noopener noreferrer">
-                      <img src={r.photo_url} alt="Foto enviada pelo cliente" className="mt-2 h-24 rounded-md object-cover" />
+                  {photo && (
+                    <a href={photo} target="_blank" rel="noopener noreferrer">
+                      <img src={photo} alt="Foto enviada pelo cliente" className="mt-2 h-24 rounded-md object-cover" />
                     </a>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -935,6 +942,8 @@ export default function PainelProfissionalPage() {
           {saving && <Loader2 className="h-4 w-4 animate-spin" />} Salvar Alterações
         </button>
       </form>
+
+      <DeleteAccount />
 
       <p className="flex items-center justify-center gap-1 pb-4 text-xs text-slate-400">
         <Star className="h-3 w-3" /> Avaliações só podem ser feitas por clientes com pedido concluído.
